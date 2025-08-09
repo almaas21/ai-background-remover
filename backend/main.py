@@ -1,45 +1,25 @@
-import io
-from flask import Flask, request, send_file, jsonify
+from fastapi import FastAPI, File, UploadFile
+from fastapi.responses import StreamingResponse
 from rembg import remove
 from PIL import Image
+import io
 
-app = Flask(__name__)
+app = FastAPI()
 
-# Optional: Limit upload size to 10 MB
-app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  
+@app.post("/remove-bg")
+async def remove_bg(file: UploadFile = File(...)):
+    # Read file
+    input_bytes = await file.read()
 
-@app.route("/remove-bg", methods=["POST"])
-def remove_bg():
-    if 'file' not in request.files:
-        return jsonify({"error": "No file provided"}), 400
+    # Open as image
+    input_image = Image.open(io.BytesIO(input_bytes)).convert("RGBA")
 
-    file = request.files['file']
-    try:
-        # Open image as a PIL Image without forcing resize
-        input_image = Image.open(file.stream).convert("RGBA")
+    # Remove background
+    output_image = remove(input_image)
 
-        # Remove background, keeping full resolution
-        output = remove(input_image)
+    # Save result to BytesIO without resizing
+    img_bytes = io.BytesIO()
+    output_image.save(img_bytes, format="PNG")
+    img_bytes.seek(0)
 
-        # Save to a BytesIO stream
-        output_bytes = io.BytesIO()
-        output.save(output_bytes, format="PNG")
-        output_bytes.seek(0)
-
-        return send_file(
-            output_bytes,
-            mimetype="image/png",
-            as_attachment=True,
-            download_name="no-bg.png"
-        )
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/", methods=["GET"])
-def home():
-    return "AI Background Remover API — POST to /remove-bg"
-
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000)
+    return StreamingResponse(img_bytes, media_type="image/png")
