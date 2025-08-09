@@ -1,41 +1,45 @@
-from fastapi import FastAPI, File, UploadFile
-from fastapi.responses import StreamingResponse
-from rembg import remove, new_session
+import io
+from flask import Flask, request, send_file, jsonify
+from rembg import remove
 from PIL import Image
-from io import BytesIO
 
-# Initialize FastAPI app
-app = FastAPI()
+app = Flask(__name__)
 
-# Use lightweight model to save RAM
-session = new_session("u2netp")
+# Optional: Limit upload size to 10 MB
+app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  
 
-@app.get("/")
-def home():
-    return {"message": "AI Background Remover API running"}
+@app.route("/remove-bg", methods=["POST"])
+def remove_bg():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file provided"}), 400
 
-@app.post("/remove-bg")
-async def remove_bg(file: UploadFile = File(...)):
+    file = request.files['file']
     try:
-        # Read file into memory
-        contents = await file.read()
+        # Open image as a PIL Image without forcing resize
+        input_image = Image.open(file.stream).convert("RGBA")
 
-        # Open image
-        image = Image.open(BytesIO(contents)).convert("RGB")
+        # Remove background, keeping full resolution
+        output = remove(input_image)
 
-        # Resize large images to max 1024px (keeps aspect ratio)
-        max_size = 1024
-        image.thumbnail((max_size, max_size))
+        # Save to a BytesIO stream
+        output_bytes = io.BytesIO()
+        output.save(output_bytes, format="PNG")
+        output_bytes.seek(0)
 
-        # Remove background
-        result = remove(image, session=session)
-
-        # Save to BytesIO for response
-        buf = BytesIO()
-        result.save(buf, format="PNG")
-        buf.seek(0)
-
-        return StreamingResponse(buf, media_type="image/png")
-
+        return send_file(
+            output_bytes,
+            mimetype="image/png",
+            as_attachment=True,
+            download_name="no-bg.png"
+        )
     except Exception as e:
-        return {"error": str(e)}
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/", methods=["GET"])
+def home():
+    return "AI Background Remover API — POST to /remove-bg"
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8000)
