@@ -1,29 +1,41 @@
 from fastapi import FastAPI, File, UploadFile
-from fastapi.responses import HTMLResponse, FileResponse
-import rembg
-import io
+from fastapi.responses import StreamingResponse
+from rembg import remove, new_session
+from PIL import Image
+from io import BytesIO
 
+# Initialize FastAPI app
 app = FastAPI()
 
-# 1️⃣ Home page with file upload form
-@app.get("/", response_class=HTMLResponse)
-def home():
-    return """
-    <html>
-        <head><title>AI Background Remover</title></head>
-        <body>
-            <h2>Upload an image to remove background</h2>
-            <form action="/remove-bg" method="post" enctype="multipart/form-data">
-                <input type="file" name="file">
-                <input type="submit" value="Remove Background">
-            </form>
-        </body>
-    </html>
-    """
+# Use lightweight model to save RAM
+session = new_session("u2netp")
 
-# 2️⃣ API endpoint to remove background
+@app.get("/")
+def home():
+    return {"message": "AI Background Remover API running"}
+
 @app.post("/remove-bg")
 async def remove_bg(file: UploadFile = File(...)):
-    input_image = await file.read()
-    output_image = rembg.remove(input_image)
-    return FileResponse(io.BytesIO(output_image), media_type="image/png", filename="no-bg.png")
+    try:
+        # Read file into memory
+        contents = await file.read()
+
+        # Open image
+        image = Image.open(BytesIO(contents)).convert("RGB")
+
+        # Resize large images to max 1024px (keeps aspect ratio)
+        max_size = 1024
+        image.thumbnail((max_size, max_size))
+
+        # Remove background
+        result = remove(image, session=session)
+
+        # Save to BytesIO for response
+        buf = BytesIO()
+        result.save(buf, format="PNG")
+        buf.seek(0)
+
+        return StreamingResponse(buf, media_type="image/png")
+
+    except Exception as e:
+        return {"error": str(e)}
