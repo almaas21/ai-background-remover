@@ -8,16 +8,16 @@ app = FastAPI()
 
 @app.post("/remove-bg")
 async def remove_bg(file: UploadFile = File(...)):
-    # Read file
+    # Read file bytes
     input_bytes = await file.read()
 
-    # Open as image
+    # Open as RGBA image
     input_image = Image.open(io.BytesIO(input_bytes)).convert("RGBA")
 
-    # Remove background
-    output_image = remove(input_image)
+    # Remove background with better model
+    output_image = remove(input_image, model_name="isnet-general")
 
-    # Save result to BytesIO without resizing
+    # Save to BytesIO
     img_bytes = io.BytesIO()
     output_image.save(img_bytes, format="PNG")
     img_bytes.seek(0)
