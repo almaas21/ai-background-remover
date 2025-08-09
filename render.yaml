@@ -6,7 +6,7 @@ services:
     dockerfilePath: ./backend/Dockerfile
     envVars:
       - key: PORT
-        value: 10000
+        value: $PORT
     autoDeploy: true
 
   - type: web
