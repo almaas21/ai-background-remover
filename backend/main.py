@@ -1,31 +1,29 @@
 from fastapi import FastAPI, File, UploadFile
-from fastapi.responses import FileResponse
-import shutil
-import uuid
-from rembg import remove
-import os
+from fastapi.responses import HTMLResponse, FileResponse
+import rembg
+import io
 
 app = FastAPI()
 
-UPLOAD_FOLDER = "uploads"
-RESULT_FOLDER = "results"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(RESULT_FOLDER, exist_ok=True)
+# 1️⃣ Home page with file upload form
+@app.get("/", response_class=HTMLResponse)
+def home():
+    return """
+    <html>
+        <head><title>AI Background Remover</title></head>
+        <body>
+            <h2>Upload an image to remove background</h2>
+            <form action="/remove-bg" method="post" enctype="multipart/form-data">
+                <input type="file" name="file">
+                <input type="submit" value="Remove Background">
+            </form>
+        </body>
+    </html>
+    """
 
+# 2️⃣ API endpoint to remove background
 @app.post("/remove-bg")
 async def remove_bg(file: UploadFile = File(...)):
-    # Save the uploaded file
-    file_id = str(uuid.uuid4())
-    input_path = os.path.join(UPLOAD_FOLDER, f"{file_id}.png")
-    output_path = os.path.join(RESULT_FOLDER, f"{file_id}.png")
-
-    with open(input_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    # Remove background
-    with open(input_path, "rb") as inp:
-        result = remove(inp.read())
-        with open(output_path, "wb") as out:
-            out.write(result)
-
-    return FileResponse(output_path, media_type="image/png")
+    input_image = await file.read()
+    output_image = rembg.remove(input_image)
+    return FileResponse(io.BytesIO(output_image), media_type="image/png", filename="no-bg.png")
